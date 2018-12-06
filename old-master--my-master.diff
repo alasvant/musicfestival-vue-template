@@ -1,0 +1,392 @@
+diff --git a/src/MusicFestival.Vue.Template/Infrastructure/BuyTicketBlockPropertyModel.cs b/src/MusicFestival.Vue.Template/Infrastructure/BuyTicketBlockPropertyModel.cs
+index ac7f9eb..b68b68c 100644
+--- a/src/MusicFestival.Vue.Template/Infrastructure/BuyTicketBlockPropertyModel.cs
++++ b/src/MusicFestival.Vue.Template/Infrastructure/BuyTicketBlockPropertyModel.cs
+@@ -1,4 +1,4 @@
+-﻿using EPiServer.ContentApi.Core;
++﻿using EPiServer.ContentApi.Core.Serialization.Models;
+ using EPiServer.SpecializedProperties;
+ using MusicFestival.Template.Models.Blocks;
+ 
+diff --git a/src/MusicFestival.Vue.Template/Infrastructure/BuyTicketBlockPropertyModelHandler.cs b/src/MusicFestival.Vue.Template/Infrastructure/BuyTicketBlockPropertyModelHandler.cs
+index 01eefe9..66d67b5 100644
+--- a/src/MusicFestival.Vue.Template/Infrastructure/BuyTicketBlockPropertyModelHandler.cs
++++ b/src/MusicFestival.Vue.Template/Infrastructure/BuyTicketBlockPropertyModelHandler.cs
+@@ -1,10 +1,11 @@
+-﻿using System.Collections.Generic;
+-using System.Globalization;
+-using EPiServer.ContentApi.Core;
++﻿using EPiServer.ContentApi.Core.Serialization;
++using EPiServer.ContentApi.Core.Serialization.Models;
+ using EPiServer.Core;
+ using EPiServer.DataAbstraction;
+ using EPiServer.SpecializedProperties;
+ using MusicFestival.Template.Models.Blocks;
++using System.Collections.Generic;
++using System.Globalization;
+ 
+ namespace MusicFestival.Template.Infrastructure
+ {
+@@ -12,14 +13,14 @@ namespace MusicFestival.Template.Infrastructure
+     /// Used to support conversion of <see cref="MusicFestival.Template.Infrastructure.BuyTicketBlockPropertyModel"/>
+     /// which is returned from API as a property of LandingPage
+     /// </summary>
+-    public class BuyTicketBlockPropertyModelHandler: IPropertyModelHandler
++    public class BuyTicketBlockPropertyModelHandler: IPropertyModelConverter
+     {
+         /// <summary>
+         /// Verifies that the instance of IPropertyModelHandler has the correct IPropertyModel registered for the provided PropertyData type.
+         /// </summary>
+         /// <param name="propertyData">An instance of PropertyData to check</param>
+         /// <returns></returns>
+-        public bool CanHandleProperty(PropertyData propertyData)
++        public bool HasPropertyModelAssociatedWith(PropertyData propertyData)
+         {
+             var blockPropertyData = propertyData as PropertyBlock;
+ 
+@@ -35,14 +36,14 @@ public bool CanHandleProperty(PropertyData propertyData)
+         /// Converts an instance of PropertyData into a specific Property Model
+         /// </summary>
+         /// <param name="propertyData">An instance of PropertyData</param>
+-        public IPropertyModel GetValue(PropertyData propertyData, CultureInfo language, bool excludePersonalizedContent, bool expand)
++        public IPropertyModel ConvertToPropertyModel(PropertyData propertyData, CultureInfo language, bool excludePersonalizedContent, bool expand)
+         {
+             return new BuyTicketBlockPropertyModel((PropertyBlock) propertyData);
+         }
+ 
+         public int SortOrder => 1000;
+ 
+-        public List<TypeModel> ModelTypes => new List<TypeModel>
++        public IEnumerable<TypeModel> ModelTypes => new List<TypeModel>
+         {
+             new TypeModel
+             {
+diff --git a/src/MusicFestival.Vue.Template/Infrastructure/ContentDeliveryExtendedRouting/RoutingEventHandler.cs b/src/MusicFestival.Vue.Template/Infrastructure/ContentDeliveryExtendedRouting/RoutingEventHandler.cs
+index f81aeec..bfaa34c 100644
+--- a/src/MusicFestival.Vue.Template/Infrastructure/ContentDeliveryExtendedRouting/RoutingEventHandler.cs
++++ b/src/MusicFestival.Vue.Template/Infrastructure/ContentDeliveryExtendedRouting/RoutingEventHandler.cs
+@@ -1,12 +1,8 @@
+-﻿using EPiServer.Core;
+-using EPiServer.Globalization;
++﻿using EPiServer.Globalization;
+ using EPiServer.ServiceLocation;
+ using EPiServer.Web.Routing;
+ using System;
+-using System.Collections.Generic;
+ using System.Linq;
+-using System.Text;
+-using System.Threading.Tasks;
+ using System.Web;
+ 
+ namespace ContentDeliveryExtendedRouting.Routing
+@@ -40,7 +36,7 @@ private void RoutedContent(object sender, RoutingEventArgs e)
+ 
+                 var property = routingContext.GetCustomRouteData<string>(RoutingConstants.RoutedPropertyKey);
+                 var shouldGetChildren = routingContext.GetCustomRouteData<string>(RoutingConstants.ChildrenKey);
+-                var contentApiChildPath = $"/{EPiServer.ContentApi.RouteConstants.BaseContentApiRoute}content/{routingContext.RoutedContentLink}/children";
++                var contentApiChildPath = $"/{EPiServer.ContentApi.Core.Internal.RouteConstants.BaseContentApiRoute}content/{routingContext.RoutedContentLink}/children";
+ 
+                 if (bool.TryParse(shouldGetChildren, out bool result) && result)
+                 {
+@@ -49,8 +45,8 @@ private void RoutedContent(object sender, RoutingEventArgs e)
+                 else
+                 {
+                     httpContext.RewritePath(property != null ?
+-                        $"/{EPiServer.ContentApi.RouteConstants.BaseContentApiRoute}content/{routingContext.RoutedContentLink}?{RoutingConstants.RoutedPropertyKey}={property}" :
+-                        $"/{EPiServer.ContentApi.RouteConstants.BaseContentApiRoute}content/{routingContext.RoutedContentLink}");
++                        $"/{EPiServer.ContentApi.Core.Internal.RouteConstants.BaseContentApiRoute}content/{routingContext.RoutedContentLink}?{RoutingConstants.RoutedPropertyKey}={property}" :
++                        $"/{EPiServer.ContentApi.Core.Internal.RouteConstants.BaseContentApiRoute}content/{routingContext.RoutedContentLink}");
+                 }
+ 
+ 
+diff --git a/src/MusicFestival.Vue.Template/Infrastructure/Owin/Startup.cs b/src/MusicFestival.Vue.Template/Infrastructure/Owin/Startup.cs
+index 48fc311..fe82df2 100644
+--- a/src/MusicFestival.Vue.Template/Infrastructure/Owin/Startup.cs
++++ b/src/MusicFestival.Vue.Template/Infrastructure/Owin/Startup.cs
+@@ -1,14 +1,14 @@
+-﻿using System;
++﻿using EPiServer.Cms.UI.AspNetIdentity;
++using EPiServer.ContentApi.Cms.Helpers.Internal;
++using EPiServer.ContentApi.OAuth;
++using EPiServer.Core;
++using EPiServer.Web.Routing;
++using Microsoft.AspNet.Identity;
++using Microsoft.AspNet.Identity.Owin;
+ using Microsoft.Owin;
+ using Microsoft.Owin.Security.Cookies;
+ using Owin;
+-using EPiServer.ContentApi.Authorization;
+-using EPiServer.Cms.UI.AspNetIdentity;
+-using Microsoft.AspNet.Identity.Owin;
+-using EPiServer.Web.Routing;
+-using EPiServer.Core;
+-using Microsoft.AspNet.Identity;
+-using EPiServer.ContentApi;
++using System;
+ 
+ [assembly: OwinStartup(typeof(MusicFestival.Template.Infrastructure.Owin.Startup))]
+ namespace MusicFestival.Template.Infrastructure.Owin
+diff --git a/src/MusicFestival.Vue.Template/Infrastructure/SiteInitialization.cs b/src/MusicFestival.Vue.Template/Infrastructure/SiteInitialization.cs
+index c95cbe8..01acd69 100644
+--- a/src/MusicFestival.Vue.Template/Infrastructure/SiteInitialization.cs
++++ b/src/MusicFestival.Vue.Template/Infrastructure/SiteInitialization.cs
+@@ -1,20 +1,19 @@
+-﻿using EPiServer.Framework;
++﻿using EPiServer.ContentApi.Core.Configuration;
++using EPiServer.ContentApi.Core.Serialization;
++using EPiServer.ContentApi.Search;
++using EPiServer.Core;
++using EPiServer.Framework;
+ using EPiServer.Framework.Initialization;
+ using EPiServer.ServiceLocation;
+-using System.Web.Mvc;
+-using System;
+-using EPiServer.ContentApi.Infrastructure;
+-using EPiServer.ContentApi.Search.Infrastructure;
+-using System.Web.Http;
+-using Newtonsoft.Json;
+-using System.Web;
+-using EPiServer.ContentApi.Core;
+-using EPiServer.ContentApi.Core.Infrastructure;
+-using MusicFestival.Template.Infrastructure.WebApi;
+ using EPiServer.Web;
+-using MusicFestival.Template.Models;
+ using EPiServer.Web.Routing;
+-using EPiServer.Core;
++using MusicFestival.Template.Infrastructure.WebApi;
++using MusicFestival.Template.Models;
++using Newtonsoft.Json;
++using System;
++using System.Web;
++using System.Web.Http;
++using System.Web.Mvc;
+ 
+ namespace MusicFestival.Template.Infrastructure
+ {
+@@ -24,12 +23,14 @@ public class SiteInitialization : IConfigurableModule
+     {
+         public void ConfigureContainer(ServiceConfigurationContext context)
+         {
+-
+-            var contentApiOptions = new ContentApiOptions
++            context.Services.Configure<ContentApiConfiguration>(config =>
+             {
+-                MultiSiteFilteringEnabled = false
+-            };
+-            context.InitializeContentApi(contentApiOptions);
++                config.Default()
++                    .SetMinimumRoles(string.Empty)
++                    .SetRequiredRole("Content Api Access")
++                    .SetMultiSiteFilteringEnabled(true)
++                    .SetSiteDefinitionApiEnabled(true);
++            });
+ 
+             // Register the extended content model mapper to be able to provide custom models from content api
+             context.Services.Intercept<IContentModelMapper>((locator, defaultModelMapper) =>
+@@ -41,9 +42,9 @@ public void ConfigureContainer(ServiceConfigurationContext context)
+                     )
+             );
+ 
+-            context.InitializeContentSearchApi(new ContentSearchApiOptions()
++            context.Services.Configure<ContentApiSearchConfiguration>(config =>
+             {
+-                SearchCacheDuration = TimeSpan.Zero
++                config.Default().SetSearchCacheDuration(TimeSpan.Zero);
+             });
+ 
+             DependencyResolver.SetResolver(new StructureMapDependencyResolver(context.StructureMap()));
+@@ -57,7 +58,7 @@ public void ConfigureContainer(ServiceConfigurationContext context)
+                 config.MapHttpAttributeRoutes();
+                 config.EnableCors();
+             });
+-            context.Services.AddTransient<IPropertyModelHandler, BuyTicketBlockPropertyModelHandler>();
++            context.Services.AddTransient<IPropertyModelConverter, BuyTicketBlockPropertyModelHandler>();
+         }
+ 
+         public void Initialize(InitializationEngine context)
+diff --git a/src/MusicFestival.Vue.Template/Models/ExtendedContentModelMapper.cs b/src/MusicFestival.Vue.Template/Models/ExtendedContentModelMapper.cs
+index cd4dac9..1b7f942 100644
+--- a/src/MusicFestival.Vue.Template/Models/ExtendedContentModelMapper.cs
++++ b/src/MusicFestival.Vue.Template/Models/ExtendedContentModelMapper.cs
+@@ -1,5 +1,6 @@
+ ﻿using EPiServer.Cms.Shell;
+-using EPiServer.ContentApi.Core;
++using EPiServer.ContentApi.Core.Serialization;
++using EPiServer.ContentApi.Core.Serialization.Models;
+ using EPiServer.Core;
+ using EPiServer.Editor;
+ using EPiServer.ServiceLocation;
+@@ -33,7 +34,7 @@ public ExtendedContentModelMapper(IUrlResolver urlResolver, IContentModelMapper
+             _versionRepository = versionRepository;
+         }
+ 
+-        public List<IPropertyModelHandler> PropertyModelHandlers { get; }
++        public IEnumerable<IPropertyModelConverter> PropertyModelConverters { get; }
+ 
+         /// <summary>
+         /// Maps an instance of IContent to ContentApiModel and additionally add info about existing languages
+diff --git a/src/MusicFestival.Vue.Template/MusicFestival.Vue.Template.csproj b/src/MusicFestival.Vue.Template/MusicFestival.Vue.Template.csproj
+index 6cf6196..65c63f1 100644
+--- a/src/MusicFestival.Vue.Template/MusicFestival.Vue.Template.csproj
++++ b/src/MusicFestival.Vue.Template/MusicFestival.Vue.Template.csproj
+@@ -80,20 +80,20 @@
+     <Reference Include="EPiServer.Configuration, Version=11.10.0.0, Culture=neutral, PublicKeyToken=8fe83dea738b45b7, processorArchitecture=MSIL">
+       <HintPath>..\..\packages\EPiServer.CMS.AspNet.11.10.0\lib\net461\EPiServer.Configuration.dll</HintPath>
+     </Reference>
+-    <Reference Include="EPiServer.ContentApi, Version=1.0.1.0, Culture=neutral, PublicKeyToken=8fe83dea738b45b7, processorArchitecture=MSIL">
+-      <HintPath>..\..\packages\EPiServer.ContentDeliveryApi.1.0.1\lib\net461\EPiServer.ContentApi.dll</HintPath>
++    <Reference Include="EPiServer.ContentApi.Cms, Version=2.1.0.0, Culture=neutral, PublicKeyToken=8fe83dea738b45b7, processorArchitecture=MSIL">
++      <HintPath>..\..\packages\EPiServer.ContentDeliveryApi.Cms.2.1.0\lib\net461\EPiServer.ContentApi.Cms.dll</HintPath>
+     </Reference>
+-    <Reference Include="EPiServer.ContentApi.Authorization, Version=1.0.1.0, Culture=neutral, PublicKeyToken=8fe83dea738b45b7, processorArchitecture=MSIL">
+-      <HintPath>..\..\packages\EPiServer.ContentDeliveryApi.1.0.1\lib\net461\EPiServer.ContentApi.Authorization.dll</HintPath>
++    <Reference Include="EPiServer.ContentApi.Core, Version=2.1.0.0, Culture=neutral, PublicKeyToken=8fe83dea738b45b7, processorArchitecture=MSIL">
++      <HintPath>..\..\packages\EPiServer.ContentDeliveryApi.Core.2.1.0\lib\net461\EPiServer.ContentApi.Core.dll</HintPath>
+     </Reference>
+-    <Reference Include="EPiServer.ContentApi.Authorization.UI, Version=1.0.1.0, Culture=neutral, PublicKeyToken=8fe83dea738b45b7, processorArchitecture=MSIL">
+-      <HintPath>..\..\packages\EPiServer.ContentDeliveryApi.1.0.1\lib\net461\EPiServer.ContentApi.Authorization.UI.dll</HintPath>
++    <Reference Include="EPiServer.ContentApi.OAuth, Version=2.1.0.0, Culture=neutral, PublicKeyToken=8fe83dea738b45b7, processorArchitecture=MSIL">
++      <HintPath>..\..\packages\EPiServer.ContentDeliveryApi.OAuth.2.1.0\lib\net461\EPiServer.ContentApi.OAuth.dll</HintPath>
+     </Reference>
+-    <Reference Include="EPiServer.ContentApi.Core, Version=1.0.1.0, Culture=neutral, PublicKeyToken=8fe83dea738b45b7, processorArchitecture=MSIL">
+-      <HintPath>..\..\packages\EPiServer.ContentDeliveryApi.1.0.1\lib\net461\EPiServer.ContentApi.Core.dll</HintPath>
++    <Reference Include="EPiServer.ContentApi.OAuth.UI, Version=2.1.0.0, Culture=neutral, PublicKeyToken=8fe83dea738b45b7, processorArchitecture=MSIL">
++      <HintPath>..\..\packages\EPiServer.ContentDeliveryApi.OAuth.2.1.0\lib\net461\EPiServer.ContentApi.OAuth.UI.dll</HintPath>
+     </Reference>
+-    <Reference Include="EPiServer.ContentApi.Search, Version=1.0.1.0, Culture=neutral, PublicKeyToken=8fe83dea738b45b7, processorArchitecture=MSIL">
+-      <HintPath>..\..\packages\EPiServer.ContentDeliveryApi.1.0.1\lib\net461\EPiServer.ContentApi.Search.dll</HintPath>
++    <Reference Include="EPiServer.ContentApi.Search, Version=2.1.0.0, Culture=neutral, PublicKeyToken=8fe83dea738b45b7, processorArchitecture=MSIL">
++      <HintPath>..\..\packages\EPiServer.ContentDeliveryApi.Search.2.1.0\lib\net461\EPiServer.ContentApi.Search.dll</HintPath>
+     </Reference>
+     <Reference Include="EPiServer.Data, Version=11.10.0.0, Culture=neutral, PublicKeyToken=8fe83dea738b45b7, processorArchitecture=MSIL">
+       <HintPath>..\..\packages\EPiServer.Framework.11.10.0\lib\net461\EPiServer.Data.dll</HintPath>
+@@ -388,10 +388,10 @@
+     <Content Include="Assets\Scripts\Mixins\epiDataModelMixin.js" />
+     <Content Include="Assets\Scripts\router.js" />
+     <Content Include="Content\editor.css" />
+-    <Content Include="modules\_protected\EPiServer.ContentDeliveryApi\ContentApiUserSettings.ascx" />
++    <Content Include="lang\EPiServer.ContentApi.OAuth.UI_en.xml" />
++    <Content Include="modules\_protected\EPiServer.ContentDeliveryApi.OAuth\ContentApiUserSettings.ascx" />
+     <Content Include="postcss.config.js" />
+     <Content Include="webpack.config.js" />
+-    <EmbeddedResource Include="lang\EPiServer.ContentApi.Authorization.UI_en.xml" />
+     <Content Include="Views\Web.config" />
+     <Content Include="Global.asax" />
+     <Content Include="Web.config" />
+@@ -456,7 +456,6 @@
+     <Content Include="modules\_protected\EPiServer.Cms.TinyMce\EPiServer.Cms.TinyMce.zip" />
+     <Content Include="modules\_protected\EPiServer.Packaging.UI\web.config" />
+     <Content Include="modules\_protected\EPiServer.Packaging.UI\EPiServer.Packaging.UI.zip" />
+-    <Content Include="modules\_protected\EPiServer.ContentDeliveryApi\module.config" />
+     <Content Include="modules\_protected\repository.config" />
+     <Content Include="Infrastructure\ContentDeliveryExtendedRouting\Readme.md" />
+     <Content Include="modules\_protected\Shell\web.config" />
+diff --git a/src/MusicFestival.Vue.Template/Web.config b/src/MusicFestival.Vue.Template/Web.config
+index 4ff7de0..6862ae2 100644
+--- a/src/MusicFestival.Vue.Template/Web.config
++++ b/src/MusicFestival.Vue.Template/Web.config
+@@ -1,4 +1,4 @@
+-﻿<?xml version="1.0" encoding="utf-8"?>
++<?xml version="1.0" encoding="utf-8"?>
+ <!--
+   For more information on how to configure your ASP.NET application, please visit
+   http://go.microsoft.com/fwlink/?LinkId=169433
+@@ -25,6 +25,9 @@
+     <add key="ValidationSettings:UnobtrusiveValidationMode" value="None" />
+     <add key="aspnet:UseTaskFriendlySynchronizationContext" value="true" />
+     <add key="ContentApiClientValidationEnabled" value="true" />
++    <!-- siteinitialization calls already config.MapHttpAttributeRoutes(); so don't call it from content delivery api packages  -->
++    <add key="episerver:contentdeliverysearch:maphttpattributeroutes" value="false" />
++    <add key="episerver:contentdelivery:maphttpattributeroutes" value="false" />
+   </appSettings>
+   <!--
+     For a description of web.config changes see http://go.microsoft.com/fwlink/?LinkId=235367.
+@@ -493,7 +496,6 @@ co
+         </assemblies>
+       </add>
+       <add name="EPiServer.Packaging.UI" />
+-      <add name="EPiServer.ContentDeliveryApi" />
+       <add name="Shell" />
+       <add name="CMS" />
+     </protectedModules>
+diff --git a/src/MusicFestival.Vue.Template/lang/EPiServer.ContentApi.Authorization.UI_en.xml b/src/MusicFestival.Vue.Template/lang/EPiServer.ContentApi.OAuth.UI_en.xml
+similarity index 78%
+rename from src/MusicFestival.Vue.Template/lang/EPiServer.ContentApi.Authorization.UI_en.xml
+rename to src/MusicFestival.Vue.Template/lang/EPiServer.ContentApi.OAuth.UI_en.xml
+index cfe3759..db3c725 100644
+--- a/src/MusicFestival.Vue.Template/lang/EPiServer.ContentApi.Authorization.UI_en.xml
++++ b/src/MusicFestival.Vue.Template/lang/EPiServer.ContentApi.OAuth.UI_en.xml
+@@ -1,9 +1,12 @@
+-<?xml version="1.0" encoding="utf-8" standalone="yes"?>
++﻿<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+ <languages>
+   <language name="English" id="en">
+     <admin>
+       <edituser>
+         <contentapisettings>
++          <description>Settings for managing a user in the Content Api</description>
++          <displayname>Api Authorization Settings</displayname>
++          
+           <refreshtokens>
+             <name>Refresh Tokens</name>
+             <description>The following refresh tokens are issued for use in client applications. Refresh tokens may be revoked for a given client to require re-authentication in each client application.</description>
+diff --git a/src/MusicFestival.Vue.Template/modules/_protected/EPiServer.ContentDeliveryApi/ContentApiUserSettings.ascx b/src/MusicFestival.Vue.Template/modules/_protected/EPiServer.ContentDeliveryApi.OAuth/ContentApiUserSettings.ascx
+similarity index 87%
+rename from src/MusicFestival.Vue.Template/modules/_protected/EPiServer.ContentDeliveryApi/ContentApiUserSettings.ascx
+rename to src/MusicFestival.Vue.Template/modules/_protected/EPiServer.ContentDeliveryApi.OAuth/ContentApiUserSettings.ascx
+index b770c39..641b7c8 100644
+--- a/src/MusicFestival.Vue.Template/modules/_protected/EPiServer.ContentDeliveryApi/ContentApiUserSettings.ascx
++++ b/src/MusicFestival.Vue.Template/modules/_protected/EPiServer.ContentDeliveryApi.OAuth/ContentApiUserSettings.ascx
+@@ -1,11 +1,11 @@
+-<%@ Control Language="C#" AutoEventWireup="false" CodeBehind="ContentApiUserSettings.ascx.cs" Inherits="EPiServer.ContentApi.Authorization.UI.ContentApiUserSettings" %>
++﻿<%@ Control Language="C#" AutoEventWireup="false" CodeBehind="ContentApiUserSettings.ascx.cs" Inherits="EPiServer.ContentApi.OAuth.UI.ContentApiUserSettings" %>
+ 
+ <div class="epi-padding">
+     <div class="epi-formArea">
+         <div class="epi-size10">
+             <h2><asp:Literal runat="server" Text="<%$ Resources: EPiServer, admin.edituser.contentapisettings.refreshtokens.name %>"></asp:Literal></h2>
+             <p><asp:Literal runat="server" Text="<%$ Resources: EPiServer, admin.edituser.contentapisettings.refreshtokens.description %>"></asp:Literal></p>
+-            <asp:Repeater Id="rptRefreshTokens" ItemType="EPiServer.ContentApi.Authorization.RefreshToken" OnItemCommand="rptRefreshTokens_OnItemCommand" runat="server">
++            <asp:Repeater Id="rptRefreshTokens" ItemType="EPiServer.ContentApi.OAuth.IRefreshToken" OnItemCommand="rptRefreshTokens_OnItemCommand" runat="server">
+                 <HeaderTemplate>
+                     <table class="epi-default">
+                     <tr>
+@@ -21,7 +21,7 @@
+                             <td><%#:Item.ClientId %></td>
+                             <td><%#:Item.IssuedUtc.ToLocalTime() %></td>
+                             <td><%#:Item.ExpiresUtc.ToLocalTime() %></td>
+-                            <td><asp:LinkButton runat="server" Text="<%$ Resources: EPiServer, admin.edituser.contentapisettings.refreshtokens.actions.revoke %>" CommandName="DeleteToken" CommandArgument="<%#:Item.Id %>"/></td>
++                            <td><asp:LinkButton runat="server" Text="<%$ Resources: EPiServer, admin.edituser.contentapisettings.refreshtokens.actions.revoke %>" CommandName="DeleteToken" CommandArgument="<%#:Item.Guid %>"/></td>
+                         </tr>
+                     </tbody>
+                 </ItemTemplate>
+diff --git a/src/MusicFestival.Vue.Template/modules/_protected/EPiServer.ContentDeliveryApi/module.config b/src/MusicFestival.Vue.Template/modules/_protected/EPiServer.ContentDeliveryApi/module.config
+deleted file mode 100644
+index 8c4803d..0000000
+--- a/src/MusicFestival.Vue.Template/modules/_protected/EPiServer.ContentDeliveryApi/module.config
++++ /dev/null
+@@ -1,6 +0,0 @@
+-<?xml version="1.0" encoding="utf-8"?>
+-<module loadFromBin="false" name="EPiServer.ContentDeliveryApi" clientResourceRelativePath="" tags="EPiServerModulePackage">
+-  <assemblies>
+-    <add assembly="EPiServer.ContentApi.Authorization.UI" />
+-  </assemblies>
+-</module>
+\ No newline at end of file
+diff --git a/src/MusicFestival.Vue.Template/packages.config b/src/MusicFestival.Vue.Template/packages.config
+index 634c9a0..00f91c7 100644
+--- a/src/MusicFestival.Vue.Template/packages.config
++++ b/src/MusicFestival.Vue.Template/packages.config
+@@ -10,7 +10,11 @@
+   <package id="EPiServer.CMS.UI" version="11.11.0" targetFramework="net461" />
+   <package id="EPiServer.CMS.UI.AspNetIdentity" version="11.11.0" targetFramework="net461" />
+   <package id="EPiServer.CMS.UI.Core" version="11.11.0" targetFramework="net461" />
+-  <package id="EPiServer.ContentDeliveryApi" version="1.0.1" targetFramework="net461" />
++  <package id="EPiServer.ContentDeliveryApi" version="2.1.0" targetFramework="net461" />
++  <package id="EPiServer.ContentDeliveryApi.Cms" version="2.1.0" targetFramework="net461" />
++  <package id="EPiServer.ContentDeliveryApi.Core" version="2.1.0" targetFramework="net461" />
++  <package id="EPiServer.ContentDeliveryApi.OAuth" version="2.1.0" targetFramework="net461" />
++  <package id="EPiServer.ContentDeliveryApi.Search" version="2.1.0" targetFramework="net461" />
+   <package id="EPiServer.Find" version="12.7.1" targetFramework="net461" />
+   <package id="EPiServer.Find.Cms" version="12.7.1" targetFramework="net461" />
+   <package id="EPiServer.Find.Framework" version="12.7.1" targetFramework="net461" />
